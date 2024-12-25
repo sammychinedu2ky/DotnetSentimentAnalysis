@@ -24,7 +24,7 @@ else
 }
 
 
-UseModelWithSingleItem(mlContext, model);
+TestModelWithInput(mlContext, model);
 
 TrainTestData LoadData(MLContext mlContext)
 {
@@ -95,7 +95,7 @@ void Evaluate(MLContext mlContext, ITransformer model, IDataView splitTestSet)
     Console.WriteLine("=============== End of model evaluation ===============");
 }
 
-void UseModelWithSingleItem(MLContext mlContext, ITransformer model)
+void TestModelWithInput(MLContext mlContext, ITransformer model)
 {
     PredictionEngine<SentimentDataTransformed, SentimentPrediction> predictionFunction =
         mlContext.Model.CreatePredictionEngine<SentimentDataTransformed, SentimentPrediction>(model);

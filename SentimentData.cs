@@ -6,10 +6,10 @@ using Microsoft.ML.Data;
 public class SentimentDataTransformed
 {
    
-    public string SentimentText { get; set; }
+    public  string SentimentText { get; set; } = default!;
   
    
-    public bool Sentiment { get; set; }
+    public  bool Sentiment { get; set; }
 }
 
 
@@ -20,7 +20,7 @@ public class SentimentDataMap : ClassMap<SentimentDataTransformed>
     {
         Map(m => m.SentimentText).Name("review");
         Map(m => m.Sentiment)
-            .Convert(args => args.Row.GetField("sentiment")
+            .Convert(args => args.Row.GetField("sentiment")!
                 .Equals("positive", StringComparison.OrdinalIgnoreCase));
     }
 }
