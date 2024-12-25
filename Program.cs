@@ -7,15 +7,25 @@ using System.Globalization;
 
 
 string _dataPath = Path.Combine(Environment.CurrentDirectory, "IMDB Dataset.csv");
-//string _dataPath = "/Users/swacblooms/Documents/codes/sentimentanalysis/sentimentanalysis/IMDB Dataset.csv";
+string modelPath = Path.Combine(Environment.CurrentDirectory, "sentiment_model.zip");
 MLContext mlContext = new MLContext();
 
-TrainTestData splitDataView = LoadData(mlContext);
-ITransformer model = BuildAndTrainModel(mlContext, splitDataView.TrainSet);
-//Evaluate(mlContext, model, splitDataView.TestSet);
+ITransformer model;
+
+if (File.Exists(modelPath))
+{
+    model = LoadTrainedModel(mlContext, out var modelSchema);
+}
+else
+{
+    TrainTestData splitDataView = LoadData(mlContext);
+    model = BuildAndTrainModel(mlContext, splitDataView.TrainSet);
+    Evaluate(mlContext, model, splitDataView.TestSet);
+}
+
 
 UseModelWithSingleItem(mlContext, model);
-UseModelWithBatchItems(mlContext, model);
+
 TrainTestData LoadData(MLContext mlContext)
 {
     IDataView dataView;
@@ -23,20 +33,32 @@ TrainTestData LoadData(MLContext mlContext)
     {
         PrepareHeaderForMatch = args => args.Header.ToLower(),
         HasHeaderRecord = true,
-        HeaderValidated = null, 
+        HeaderValidated = null,
         Delimiter = ",",
-        BadDataFound = null 
+        BadDataFound = null
     };
     using (var reader = new StreamReader(_dataPath))
     using (var csv = new CsvReader(reader, config))
     {
-     csv.Context.RegisterClassMap<SentimentDataMap>();
+        csv.Context.RegisterClassMap<SentimentDataMap>();
         var records = csv.GetRecords<SentimentDataTransformed>().ToList();
         dataView = mlContext.Data.LoadFromEnumerable(records);
     }
 
     TrainTestData splitDataView = mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
     return splitDataView;
+}
+
+ITransformer LoadTrainedModel(MLContext mlContext, out DataViewSchema modelSchema)
+{
+    string modelPath = Path.Combine(Environment.CurrentDirectory, "sentiment_model.zip");
+    if (!File.Exists(modelPath))
+    {
+        throw new FileNotFoundException($"Model file not found: {modelPath}");
+    }
+    Console.WriteLine($"Loading model from {modelPath}");
+    ITransformer trainedModel = mlContext.Model.Load(modelPath, out modelSchema);
+    return trainedModel;
 }
 
 ITransformer BuildAndTrainModel(MLContext mlContext, IDataView splitTrainSet)
@@ -50,7 +72,9 @@ ITransformer BuildAndTrainModel(MLContext mlContext, IDataView splitTrainSet)
 
     Console.WriteLine("=============== Create and Train the Model ===============");
     var model = estimator.Fit(splitTrainSet);
+
     Console.WriteLine("=============== End of training ===============");
+    mlContext.Model.Save(model, splitTrainSet.Schema, modelPath);
     Console.WriteLine();
     return model;
 }
@@ -73,50 +97,28 @@ void Evaluate(MLContext mlContext, ITransformer model, IDataView splitTestSet)
 
 void UseModelWithSingleItem(MLContext mlContext, ITransformer model)
 {
-    PredictionEngine<SentimentDataTransformed, SentimentPrediction> predictionFunction = mlContext.Model.CreatePredictionEngine<SentimentDataTransformed, SentimentPrediction>(model);
+    PredictionEngine<SentimentDataTransformed, SentimentPrediction> predictionFunction =
+        mlContext.Model.CreatePredictionEngine<SentimentDataTransformed, SentimentPrediction>(model);
+
+    Console.WriteLine("Enter a sentence to test sentiment (press Enter to use the default: 'This was a very bad steak'):");
+    string? inputText = Console.ReadLine();
+
+    if (string.IsNullOrWhiteSpace(inputText))
+    {
+        inputText = "This was a very bad steak";
+    }
+
     SentimentDataTransformed sampleStatement = new SentimentDataTransformed
     {
-        SentimentText = "This was a very bad steak"
+        SentimentText = inputText
     };
+
     var resultPrediction = predictionFunction.Predict(sampleStatement);
+
     Console.WriteLine();
     Console.WriteLine("=============== Prediction Test of model with a single sample and test dataset ===============");
-
     Console.WriteLine();
     Console.WriteLine($"Sentiment: {resultPrediction.SentimentText} | Prediction: {(Convert.ToBoolean(resultPrediction.Prediction) ? "Positive" : "Negative")} | Probability: {resultPrediction.Probability} ");
-
     Console.WriteLine("=============== End of Predictions ===============");
     Console.WriteLine();
-}
-
-
-void UseModelWithBatchItems(MLContext mlContext, ITransformer model)
-{
-    IEnumerable<SentimentDataTransformed> sentiments = new[]
-    {
-    new SentimentDataTransformed
-    {
-        SentimentText = "This was a horrible meal"
-    },
-    new SentimentDataTransformed
-    {
-        SentimentText = "I love this spaghetti."
-    }
-
-};
-
-    IDataView batchComments = mlContext.Data.LoadFromEnumerable(sentiments);
-
-    IDataView predictions = model.Transform(batchComments);
-
-    IEnumerable<SentimentPrediction> predictedResults = mlContext.Data.CreateEnumerable<SentimentPrediction>(predictions, reuseRowObject: false);
-
-    Console.WriteLine();
-
-    Console.WriteLine("=============== Prediction Test of loaded model with multiple samples ===============");
-    foreach (SentimentPrediction prediction in predictedResults)
-    {
-        Console.WriteLine($"Sentiment: {prediction.SentimentText} | Prediction: {(Convert.ToBoolean(prediction.Prediction) ? "Positive" : "Negative")} | Probability: {prediction.Probability} ");
-    }
-    Console.WriteLine("=============== End of predictions ===============");
 }
